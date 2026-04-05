@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LM-Assisted Reading</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup-header">
+    <span class="popup-title">LM Reading Assistant</span>
+  </div>
+
+  <div class="popup-body">
+    <div class="field-group">
+      <label for="api-key-input">Anthropic API Key</label>
+      <div class="api-key-row">
+        <input
+          type="password"
+          id="api-key-input"
+          placeholder="sk-ant-…"
+          autocomplete="off"
+        />
+        <button id="save-key-btn">Save</button>
+      </div>
+      <p id="key-status" class="status-msg"></p>
+    </div>
+
+    <hr />
+
+    <button id="toggle-panel-btn" class="wide-btn">Toggle Panel on Page</button>
+
+    <p class="hint">
+      Select text on any article, then type your question in the panel.
+      Annotations appear inline below the relevant paragraph.
+    </p>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
