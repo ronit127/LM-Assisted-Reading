@@ -1,8 +1,14 @@
-chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-  chrome.scripting.executeScript(
-    { target: { tabId: tab.id }, func: () => document.body.innerText.trim() },
-    ([result]) => {
-      document.getElementById("text").textContent = result?.result || "No text found.";
-    }
-  );
+const placeholder = document.getElementById("placeholder");
+const selectionText = document.getElementById("selection-text");
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type !== "SELECTION_CHANGED") return;
+  if (msg.text) {
+    placeholder.hidden = true;
+    selectionText.hidden = false;
+    selectionText.textContent = msg.text;
+  } else {
+    placeholder.hidden = false;
+    selectionText.hidden = true;
+  }
 });

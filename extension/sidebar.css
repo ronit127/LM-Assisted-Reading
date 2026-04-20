@@ -1,0 +1,4 @@
+/* Page-level styles injected alongside the sidebar host element. */
+#lm-sidebar-host {
+  all: initial;
+}
