@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LM-Assisted Reading",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Inline LM-assisted reading tool.",
 
   "action": {
