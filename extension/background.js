@@ -57,16 +57,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
 
       const raw = data.output?.message?.content?.[0]?.text ?? "";
-      // Extract the first JSON object/array from the response, ignoring surrounding text or code fences
-      const jsonMatch = raw.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-      const cleaned = jsonMatch
-        ? jsonMatch[1]
-        : raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
-      try {
-        const parsed = JSON.parse(cleaned);
+      const parsed = extractFirstJson(raw);
+      if (parsed !== null) {
         sendResponse({ parsed, mode });
-      } catch {
-        sendResponse({ text: cleaned, mode });
+      } else {
+        const text = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+        sendResponse({ text, mode });
       }
     } catch (err) {
       sendResponse({ error: err.message });
@@ -75,6 +71,34 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   return true;
 });
+
+// ── JSON extraction ───────────────────────────────────────────────────────────
+
+function extractFirstJson(text) {
+  // 1. Try direct parse of the full response
+  try { return JSON.parse(text.trim()); } catch {}
+
+  // 2. Strip markdown code fences and retry
+  const stripped = text
+    .replace(/^```(?:json)?\s*/im, "")
+    .replace(/\s*```\s*$/im, "")
+    .trim();
+  try { return JSON.parse(stripped); } catch {}
+
+  // 3. Bracket scan: find the first { or [ and try every possible end position
+  //    in reverse (longest match first) so we get the full object, not a prefix.
+  for (const [open, close] of [["{", "}"], ["[", "]"]]) {
+    const start = text.indexOf(open);
+    if (start === -1) continue;
+    let pos = text.lastIndexOf(close);
+    while (pos > start) {
+      try { return JSON.parse(text.slice(start, pos + 1)); } catch {}
+      pos = text.lastIndexOf(close, pos - 1);
+    }
+  }
+
+  return null;
+}
 
 // ── Semantic retrieval via Titan Text Embeddings ──────────────────────────────
 

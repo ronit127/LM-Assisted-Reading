@@ -612,31 +612,26 @@ function dispatchChat(userText, chatArea, sendBtn, range) {
 
         const parsed = resp.parsed;
 
-        if (mode === 'edit' && (parsed?.edits || parsed?.editedText)) {
-          const edits = parsed.edits ||
-            [{ uid: selectedBlockUids[0] || parsed.uid, editedText: parsed.editedText }];
+        if (mode === 'edit' && parsed) {
+          const edits = parsed.edits ?? [{ uid: selectedBlockUids[0] ?? parsed.uid, editedText: parsed.editedText }];
           const preview = edits[0]?.editedText?.slice(0, 60) || "";
           const confirmText = `✦ Rewritten ${edits.length > 1 ? `(${edits.length} blocks)` : ""} — "${preview}…"`;
           aBody.className = "bubble-edit-confirm";
           aBody.textContent = confirmText;
           chatHistory.push({ role: "assistant", content: edits.map(e => e.editedText).join('\n\n') });
           displayHistory.push({ userText, assistantText: confirmText, mode: 'edit' });
-          edits.forEach((edit, i) => {
-            const targetUid = selectedBlockUids[i] ?? edit.uid;
-            applyEdit(targetUid, edit.editedText);
-          });
+          edits.forEach((edit, i) => applyEdit(selectedBlockUids[i] ?? edit.uid, edit.editedText));
 
         } else if (mode === 'ask' && parsed?.answer) {
-          const { uid, answer } = parsed;
           aBody.className = "bubble-assistant";
-          aBody.textContent = answer;
-          chatHistory.push({ role: "assistant", content: answer });
-          displayHistory.push({ userText, assistantText: answer, mode: 'ask' });
+          aBody.textContent = parsed.answer;
+          chatHistory.push({ role: "assistant", content: parsed.answer });
+          displayHistory.push({ userText, assistantText: parsed.answer, mode: 'ask' });
           chatArea.scrollTop = chatArea.scrollHeight;
-          injectAnnotation({ id: genId(), selectedText, question: userText, answer, uid: uid || selectedBlockUids[0] || null }, range);
+          injectAnnotation({ id: genId(), selectedText, question: userText, answer: parsed.answer, uid: parsed.uid ?? selectedBlockUids[0] ?? null }, range);
 
         } else {
-          const text = resp.text || (parsed ? JSON.stringify(parsed) : "No response.");
+          const text = resp.text || "No response.";
           aBody.className = "bubble-assistant";
           aBody.textContent = text;
           chatHistory.push({ role: "assistant", content: text });
@@ -763,41 +758,30 @@ function applyEdit(uid, editedText) {
 
   const originalText = originalTexts.has(uid) ? originalTexts.get(uid) : targetEl.textContent;
 
-  const badge = document.createElement("div");
-  badge.style.cssText = `
-    all: initial;
-    display: flex; align-items: center; gap: 8px;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 11px; font-weight: 500;
-    color: #92400E; background: #FFFBEB;
-    border: 1px solid rgba(217,119,6,0.25); border-left: 3px solid #D97706;
-    border-radius: 0 5px 5px 0;
-    padding: 5px 10px; margin-bottom: 4px;
-    -webkit-font-smoothing: antialiased;
-  `;
+  // Subtle indicator: amber left border + faint tint directly on the element
+  targetEl.style.borderLeft = "2px solid rgba(217,119,6,0.45)";
+  targetEl.style.paddingLeft = "8px";
+  targetEl.style.background  = "rgba(255,251,235,0.45)";
 
-  const label = document.createElement("span");
-  label.textContent = "✦ AI simplified";
-  label.style.flex = "1";
-
-  const restoreBtn = document.createElement("button");
-  restoreBtn.textContent = "Restore";
-  restoreBtn.style.cssText = `
-    background: none; border: 1px solid rgba(217,119,6,0.4);
-    border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: 500;
-    color: #92400E; font-family: inherit; padding: 2px 7px;
-    transition: background 100ms;
+  // Tiny inline restore chip appended after the edited text
+  const chip = document.createElement("span");
+  chip.style.cssText = `
+    font-size: 10px; font-weight: 500; font-family: inherit;
+    color: rgba(217,119,6,0.5); cursor: pointer;
+    margin-left: 7px; user-select: none; vertical-align: middle;
   `;
-  restoreBtn.onmouseover = () => { restoreBtn.style.background = "rgba(217,119,6,0.08)"; };
-  restoreBtn.onmouseout  = () => { restoreBtn.style.background = "none"; };
-  restoreBtn.addEventListener("click", () => {
-    targetEl.textContent = originalText;
-    badge.remove();
+  chip.textContent = "↩ restore";
+  chip.onmouseover = () => { chip.style.color = "#D97706"; };
+  chip.onmouseout  = () => { chip.style.color = "rgba(217,119,6,0.5)"; };
+  chip.addEventListener("click", () => {
+    targetEl.textContent = originalText; // also removes the chip node
+    targetEl.style.removeProperty("border-left");
+    targetEl.style.removeProperty("padding-left");
+    targetEl.style.removeProperty("background");
   });
 
-  badge.append(label, restoreBtn);
   targetEl.textContent = editedText;
-  targetEl.parentNode.insertBefore(badge, targetEl);
+  targetEl.appendChild(chip);
 }
 
 function saveAnnotations() {
