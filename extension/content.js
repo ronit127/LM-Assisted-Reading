@@ -102,6 +102,17 @@ function createSidebar() {
       if (collapseBtn) collapseBtn.innerHTML = svgChevronLeft();
     }
   });
+
+  // Kick off background embedding precomputation for semantic block retrieval
+  chrome.storage.local.get("awsCreds", ({ awsCreds }) => {
+    if (!awsCreds?.accessKeyId) return;
+    chrome.runtime.sendMessage({
+      type: "PRECOMPUTE_EMBEDDINGS",
+      blocks: getPageBlocks(),
+      pageUrl: location.href,
+      region: awsCreds.region || "us-east-1",
+    });
+  });
 }
 
 function removeSidebar() {
@@ -143,7 +154,7 @@ function buildStyle() {
       min-height: 200px;
     }
     /* Re-enable selection only for actual input fields */
-    #chat-input, #api-key-input {
+    #chat-input, #aws-access-key, #aws-secret-key, #aws-region {
       user-select: text;
       -webkit-user-select: text;
     }
@@ -398,27 +409,52 @@ function buildUI() {
   const body = el("div", { id: "sidebar-body" });
 
   const settingsPanel = el("div", { id: "settings-panel" });
-  const keyLabel = el("label", { text: "Groq API Key" });
-  keyLabel.htmlFor = "api-key-input";
-  const keyInput = el("input", { id: "api-key-input", type: "password", placeholder: "gsk_…" });
-  const saveBtn = el("button", { id: "save-key-btn", text: "Save key" });
-  const keyStatus = el("div", { id: "key-status" });
-  settingsPanel.append(keyLabel, keyInput, saveBtn, keyStatus);
+
+  function makeField(labelText, inputId, placeholder, type = "password") {
+    const lbl = el("label", { text: labelText });
+    lbl.htmlFor = inputId;
+    lbl.style.cssText = "display:block; font-size:10px; font-weight:600; color:#A3A29F; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:5px; margin-top:10px;";
+    const inp = el("input", { id: inputId, type, placeholder });
+    inp.style.cssText = "width:100%; padding:7px 10px; background:#fff; border:1px solid rgba(0,0,0,0.12); border-radius:6px; font-size:12px; font-family:'SF Mono','Fira Code',monospace; color:#111110; outline:none;";
+    inp.addEventListener("focus", () => { inp.style.borderColor = "#5B5BD6"; });
+    inp.addEventListener("blur",  () => { inp.style.borderColor = "rgba(0,0,0,0.12)"; });
+    return { lbl, inp };
+  }
+
+  const { lbl: akLbl, inp: akInput }  = makeField("AWS Access Key ID",     "aws-access-key",  "AKIA…", "password");
+  const { lbl: skLbl, inp: skInput }  = makeField("AWS Secret Access Key",  "aws-secret-key",  "…",     "password");
+  const { lbl: rgLbl, inp: rgInput }  = makeField("Region",                 "aws-region",      "us-east-1", "text");
+
+  const saveBtn   = el("button", { id: "save-key-btn", text: "Save" });
+  const keyStatus = el("div",    { id: "key-status" });
+  settingsPanel.append(akLbl, akInput, skLbl, skInput, rgLbl, rgInput, saveBtn, keyStatus);
   settingsPanel.style.display = "none";
 
   settingsBtn.addEventListener("click", () => {
     settingsPanel.style.display = settingsPanel.style.display === "none" ? "" : "none";
   });
+
+  // Pre-fill saved values
+  chrome.storage.local.get("awsCreds", ({ awsCreds }) => {
+    if (awsCreds) {
+      akInput.value = awsCreds.accessKeyId     || "";
+      skInput.value = awsCreds.secretAccessKey || "";
+      rgInput.value = awsCreds.region          || "us-east-1";
+      settingsPanel.style.display = "none";
+    } else {
+      settingsPanel.style.display = "";
+    }
+  });
+
   saveBtn.addEventListener("click", () => {
-    const val = keyInput.value.trim();
-    if (!val) { keyStatus.textContent = "Enter a key first."; return; }
-    chrome.storage.local.set({ apiKey: val }, () => {
+    const accessKeyId     = akInput.value.trim();
+    const secretAccessKey = skInput.value.trim();
+    const region          = rgInput.value.trim() || "us-east-1";
+    if (!accessKeyId || !secretAccessKey) { keyStatus.textContent = "Fill in both keys."; return; }
+    chrome.storage.local.set({ awsCreds: { accessKeyId, secretAccessKey, region } }, () => {
       keyStatus.textContent = "Saved.";
       setTimeout(() => { keyStatus.textContent = ""; settingsPanel.style.display = "none"; }, 1200);
     });
-  });
-  chrome.storage.local.get("apiKey", ({ apiKey }) => {
-    settingsPanel.style.display = apiKey ? "none" : "";
   });
 
   const contextSection = el("div", { id: "context-section" });
@@ -554,17 +590,17 @@ function dispatchChat(userText, chatArea, sendBtn, range) {
 
   const blocks = getPageBlocks(selectedBlockUids);
 
-  chrome.storage.local.get("apiKey", ({ apiKey }) => {
-    if (!apiKey) {
+  chrome.storage.local.get("awsCreds", ({ awsCreds }) => {
+    if (!awsCreds?.accessKeyId || !awsCreds?.secretAccessKey) {
       aBody.className = "bubble-error";
-      aBody.textContent = "No API key — click ⚙ to add one.";
+      aBody.textContent = "No AWS credentials — click ⚙ to add them.";
       sendBtn.disabled = false;
       chatHistory.pop();
       return;
     }
 
     chrome.runtime.sendMessage(
-      { type: "CHAT_REQUEST", apiKey, selectedText, messages: chatHistory, blocks, mode, selectedBlockUids },
+      { type: "CHAT_REQUEST", awsCreds, selectedText, messages: chatHistory, blocks, mode, selectedBlockUids, pageUrl: location.href },
       (resp) => {
         sendBtn.disabled = false;
         if (!resp || resp.error) {
